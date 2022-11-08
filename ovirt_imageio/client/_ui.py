@@ -8,10 +8,54 @@ import time
 from .. _internal import util
 
 
+DEFAULT_WIDTH = 79
+
+
+class OutputFormat:
+
+    def __init__(self, now, size=None, width=DEFAULT_WIDTH):
+        """
+        Arguments:
+            now (callable): callable returning current time for testing.
+            size (int): total number of bytes. If size is unknown when
+                creating, progress value is not displayed. The size can be set
+                later to enable progress display.
+            width (int): width of progress bar in characters (default 79)
+        """
+        self._now = now
+        self._start = self._now()
+        self.size = size
+        # TODO: use current terminal width instead.
+        self._width = width
+
+    def draw(self, value, transferred, phase=None, last=False):
+        raise NotImplementedError
+
+
+class TextFormat(OutputFormat):
+
+    def draw(self, value, transferred, phase=None, last=False):
+        elapsed = self._now() - self._start
+        progress = f"{max(0, value):3d}%" if self.size else "----"
+        done = util.humansize(transferred)
+        rate = util.humansize((transferred / elapsed) if elapsed else 0)
+        phase = f" | {phase}" if phase else ""
+        line = f"[ {progress} ] {done}, {elapsed:.2f} s, {rate}/s{phase}"
+
+        # Using "\r" moves the cursor to the first column, so the next progress
+        # will overwrite this one. If this is the last progress, we use "\n" to
+        # move to the next line. Otherwise, the next shell prompt will include
+        # part of the old progress.
+        end = "\n" if last else "\r"
+
+        return line.ljust(self._width, " ") + end
+
+
 class ProgressBar:
 
     def __init__(self, phase=None, error_phase="command failed", size=None,
-                 output=sys.stdout, step=None, width=79, now=time.monotonic):
+                 output=sys.stdout, step=None, width=DEFAULT_WIDTH,
+                 now=time.monotonic):
         """
         Arguments:
             phase (str): short description of the current phase.
@@ -28,13 +72,9 @@ class ProgressBar:
         """
         self._phase = phase
         self._error_phase = error_phase
-        self._size = size
         self._output = output
-        # TODO: use current terminal width instead.
-        self._width = width
-        self._now = now
+        self._format = TextFormat(now, size, width)
         self._lock = threading.Lock()
-        self._start = self._now()
         # Number of bytes transferred.
         self._done = 0
         # Value in percent. We start with -1 so the first update will show 0%.
@@ -59,15 +99,15 @@ class ProgressBar:
 
     @property
     def size(self):
-        return self._size
+        return self._format.size
 
     @size.setter
     def size(self, n):
         with self._lock:
             if self._closed:
                 return
-            if self._size != n:
-                self._size = n
+            if self._format.size != n:
+                self._format.size = n
                 self._draw()
 
     def update(self, n):
@@ -87,8 +127,8 @@ class ProgressBar:
             if self._closed:
                 return
             self._done += n
-            if self._size:
-                new_value = int(self._done / self._size * 100)
+            if self.size:
+                new_value = int(self._done / self.size * 100)
                 if new_value > self._value:
                     self._value = new_value
                     self._draw()
@@ -100,21 +140,8 @@ class ProgressBar:
                 self._draw(last=True)
 
     def _draw(self, last=False):
-        elapsed = self._now() - self._start
-        progress = f"{max(0, self._value):3d}%" if self._size else "----"
-        done = util.humansize(self._done)
-        rate = util.humansize((self._done / elapsed) if elapsed else 0)
-        phase = f" | {self._phase}" if self._phase else ""
-        line = f"[ {progress} ] {done}, {elapsed:.2f} s, {rate}/s{phase}"
-        line = line.ljust(self._width, " ")
-
-        # Using "\r" moves the cursor to the first column, so the next progress
-        # will overwrite this one. If this is the last progress, we use "\n" to
-        # move to the next line. Otherwise, the next shell prompt will include
-        # part of the old progress.
-        end = "\n" if last else "\r"
-
-        self._output.write(line + end)
+        line = self._format.draw(self._value, self._done, self._phase, last)
+        self._output.write(line)
         self._output.flush()
 
     def __enter__(self):
