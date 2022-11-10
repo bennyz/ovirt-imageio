@@ -7,6 +7,7 @@ import logging
 import os
 import signal
 import subprocess
+import stat
 import urllib.parse
 
 from contextlib import contextmanager
@@ -91,7 +92,6 @@ class Server:
         if self.cache is None:
             self.cache = "none" if self._can_use_direct_io() else "writeback"
             log.debug("Using cache=%r", self.cache)
-
         if self.aio is None:
             self.aio = "native" if self.cache == "none" else "threads"
             log.debug("Using aio=%r", self.aio)
@@ -147,7 +147,10 @@ class Server:
         # Build a 'json:{...}' filename allowing control all aspects of the
         # image.
 
-        file = {"driver": "file", "filename": self.image}
+        if self._is_block_dev():
+            file = {"driver": "host_device", "filename": self.image}
+        else:
+            file = {"driver": "file", "filename": self.image}
 
         if self.offset is not None or self.size is not None:
             # Exposing a range in a raw file.
@@ -245,6 +248,11 @@ class Server:
         if self.block_signals:
             signal.pthread_sigmask(signal.SIG_BLOCK, self.block_signals)
 
+    def _is_block_dev(self):
+        """
+        Checks if a path is of a block device
+        """
+        return stat.S_ISBLK(os.lstat(self.image).st_mode)
 
 @contextmanager
 def run(image, fmt, sock, export_name="", read_only=False, shared=8,
