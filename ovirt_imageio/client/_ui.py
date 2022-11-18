@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Red Hat, Inc.
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import json
 import sys
 import threading
 import time
@@ -9,6 +10,7 @@ from .. _internal import util
 
 
 FORMAT_TEXT = 'human'
+FORMAT_JSON = 'json'
 
 DEFAULT_WIDTH = 79
 
@@ -30,6 +32,10 @@ class OutputFormat:
         # TODO: use current terminal width instead.
         self._width = width
 
+    @property
+    def elapsed(self):
+        return self._now() - self._start
+
     def draw(self, value, transferred, phase=None, last=False):
         raise NotImplementedError
 
@@ -37,12 +43,12 @@ class OutputFormat:
 class TextFormat(OutputFormat):
 
     def draw(self, value, transferred, phase=None, last=False):
-        elapsed = self._now() - self._start
         progress = f"{max(0, value):3d}%" if self.size else "----"
         done = util.humansize(transferred)
-        rate = util.humansize((transferred / elapsed) if elapsed else 0)
+        rate = util.humansize(
+            (transferred / self.elapsed) if self.elapsed else 0)
         phase = f" | {phase}" if phase else ""
-        line = f"[ {progress} ] {done}, {elapsed:.2f} s, {rate}/s{phase}"
+        line = f"[ {progress} ] {done}, {self.elapsed:.2f} s, {rate}/s{phase}"
 
         # Using "\r" moves the cursor to the first column, so the next progress
         # will overwrite this one. If this is the last progress, we use "\n" to
@@ -53,9 +59,21 @@ class TextFormat(OutputFormat):
         return line.ljust(self._width, " ") + end
 
 
+class JsonFormat(OutputFormat):
+
+    def draw(self, value, transferred, phase=None, last=False):
+        return json.dumps({
+            'transferred': transferred,
+            'size': self.size,
+            'elapsed': self.elapsed,
+            'description': phase or "",
+        }) + '\n'
+
+
 FORMATTER = {
     None: TextFormat,
     FORMAT_TEXT: TextFormat,
+    FORMAT_JSON: JsonFormat,
 }
 
 

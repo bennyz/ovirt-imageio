@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import pytest
+import json
 
 from ovirt_imageio import client
 from ovirt_imageio._internal.units import MiB, GiB
@@ -82,6 +83,111 @@ def test_draw():
     pb.close()
     line = "[ 100% ] 3.00 GiB, 5.30 s, 579.62 MiB/s | download completed"
     assert f.last == line.ljust(79) + "\n"
+
+
+def test_json_format():
+    fake_time = FakeTime()
+    f = FakeFile()
+
+    # Size is unknown at this point.
+    pb = client.ProgressBar(
+        phase="setting up", output=f, format="json", now=fake_time)
+    line_data = {
+        "transferred": 0,
+        "size": None,
+        "elapsed": 0.0,
+        "description": "setting up",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Size was updated, but no bytes were transferred yet.
+    fake_time.now += 0.1
+    pb.size = 3 * GiB
+    line_data = {
+        "transferred": 0,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "setting up",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Phase was updated.
+    fake_time.now += 0.2
+    pb.phase = "downloading image"
+    line_data = {
+        "transferred": 0,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "downloading image",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Write some data...
+    fake_time.now += 0.8
+    pb.update(512 * MiB)
+    line_data = {
+        "transferred": 512 * MiB,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "downloading image",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Write zeros (much faster)...
+    fake_time.now += 0.2
+    pb.update(2 * GiB)
+    line_data = {
+        "transferred": 2560 * MiB,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "downloading image",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # More data, slow down again...
+    fake_time.now += 1.0
+    pb.update(512 * MiB)
+    line_data = {
+        "transferred": 3 * GiB,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "downloading image",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Cleaning up after download.
+    pb.phase = "cleaning up"
+    line_data = {
+        "transferred": 3 * GiB,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "cleaning up",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Cleaning can take few seconds, lowing the rate.
+    fake_time.now += 3.0
+    pb.phase = "download completed"
+    line_data = {
+        "transferred": 3 * GiB,
+        "size": 3 * GiB,
+        "elapsed": fake_time.now,
+        "description": "download completed",
+    }
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
+
+    # Closing prints the final line with no comma.
+    pb.close()
+    line = f'{json.dumps(line_data)}'
+    assert f.last == line + "\n"
 
 
 def test_with_size():

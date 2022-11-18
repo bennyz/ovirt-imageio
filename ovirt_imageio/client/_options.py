@@ -46,7 +46,7 @@ class Choices:
 
 
 log_level = Choices("log_level", ("debug", "info", "warning", "error"))
-output_format = Choices("output_format", ("human"))
+output_format = Choices("output_format", ("human", "json"))
 
 
 def bool_string(value):

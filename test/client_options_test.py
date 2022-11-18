@@ -346,6 +346,7 @@ def test_transfer_options_disabled(config):
 
 @pytest.mark.parametrize("format", [
     "human",
+    "json",
 ])
 def test_output_option(config, format):
     parser = _options.Parser()
