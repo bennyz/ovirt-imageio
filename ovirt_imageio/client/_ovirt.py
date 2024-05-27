@@ -211,8 +211,7 @@ def find_host(con, sd_name):
 
 def create_transfer(
         con, image, direction=types.ImageTransferDirection.UPLOAD, host=None,
-        backup=None, inactivity_timeout=None, timeout=60, shallow=None,
-        timeout_policy=types.ImageTransferTimeoutPolicy.CANCEL):
+        backup=None, inactivity_timeout=None, timeout=60, shallow=None):
     """
     Create an image transfer for upload or download.
 
@@ -248,8 +247,7 @@ def create_transfer(
         direction,
         Repr(host, "name"),
         Repr(backup, "id"),
-        shallow,
-        timeout_policy)
+        shallow)
 
     start = time.monotonic()
     deadline = start + timeout
@@ -257,11 +255,8 @@ def create_transfer(
     transfer = types.ImageTransfer(
         host=host,
         direction=direction,
-        backup=backup,
         inactivity_timeout=inactivity_timeout,
-        timeout_policy=timeout_policy,
-        format=RAW,
-        shallow=shallow)
+        format=RAW)
 
     if isinstance(image, types.Disk):
         transfer.disk = image
